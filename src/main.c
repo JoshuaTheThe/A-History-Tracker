@@ -85,7 +85,6 @@ void AFHT_Add(size_t *i, int arg_c, char **arg_v)
 	char cpath[1024] = {0};
 	snprintf(cpath, 1024, "%s/%s", AFHT_CommitDirectory, path);
 
-	// Create directory structure
 	char *dir = strdup(cpath);
 	mkdir_p(dirname(dir));
 	free(dir);
@@ -118,6 +117,34 @@ void AFHT_Commit(size_t *i, int arg_c, char **arg_v)
 		message = arg_v[*i];
 	}
 
+	char blame_name[256] = "unknown";
+	char blame_email[256] = "unknown";
+
+	const char *home = getenv("HOME");
+	if (!home)
+		home = getenv("USERPROFILE");
+
+	if (home)
+	{
+		char iam_path[512];
+		snprintf(iam_path, sizeof(iam_path), "%s/.config/afht/iam", home);
+		FILE *iam = fopen(iam_path, "rb");
+		if (iam)
+		{
+			char line[256];
+			while (fgets(line, sizeof(line), iam))
+			{
+				if (strncmp(line, "name:", 5) == 0)
+					strcpy(blame_name, line + 6);
+				if (strncmp(line, "email:", 6) == 0)
+					strcpy(blame_email, line + 7);
+			}
+			fclose(iam);
+			blame_name[strcspn(blame_name, "\n")] = 0;
+			blame_email[strcspn(blame_email, "\n")] = 0;
+		}
+	}
+
 	char random[12], timestamp[12];
 	unsigned long long t = (unsigned long long)time(NULL);
 
@@ -137,7 +164,7 @@ void AFHT_Commit(size_t *i, int arg_c, char **arg_v)
 
 	char cmd[1024];
 	snprintf(cmd, sizeof(cmd), "cp -r %s/* %s/ 2>/dev/null", AFHT_CommitDirectory, temp_path);
-	system(cmd); // Shut up, it works
+	system(cmd);
 
 	snprintf(cmd, sizeof(cmd), "tar -czf %s -C %s .", final_path, temp_path);
 	system(cmd);
@@ -161,6 +188,8 @@ void AFHT_Commit(size_t *i, int arg_c, char **arg_v)
 		fprintf(meta, "parent: %s\n", parent);
 		fprintf(meta, "time: %llu\n", t);
 		fprintf(meta, "msg: %s\n", message);
+		fprintf(meta, "name: %s\n", blame_name);
+		fprintf(meta, "email: %s\n", blame_email);
 		fclose(meta);
 	}
 
@@ -173,6 +202,10 @@ void AFHT_Commit(size_t *i, int arg_c, char **arg_v)
 
 	fprintf(stderr, " [INFO] Committed as %s\n", name);
 	fprintf(stderr, " [INFO] %s\n", message);
+	if (strcmp(blame_name, "unknown") != 0)
+	{
+		fprintf(stderr, " [INFO] Blame: %s <%s>\n", blame_name, blame_email);
+	}
 }
 
 void AFHT_Fetch(size_t *i, int arg_c, char **arg_v)
@@ -269,6 +302,8 @@ void AFHT_Log(size_t *i, int arg_c, char **arg_v)
 		char msg[256] = "???";
 		char time_str[256] = "???";
 		char parent[256] = "none";
+		char name[256] = "unknown";
+		char email[256] = "";
 
 		while (fgets(line, sizeof(line), meta))
 		{
@@ -278,13 +313,20 @@ void AFHT_Log(size_t *i, int arg_c, char **arg_v)
 				strcpy(time_str, line + 6);
 			if (strncmp(line, "parent:", 7) == 0)
 				sscanf(line + 7, "%s", parent);
+			if (strncmp(line, "name:", 5) == 0)
+				strcpy(name, line + 6);
+			if (strncmp(line, "email:", 6) == 0)
+				strcpy(email, line + 7);
 		}
 		fclose(meta);
 
 		msg[strcspn(msg, "\n")] = 0;
 		time_str[strcspn(time_str, "\n")] = 0;
+		name[strcspn(name, "\n")] = 0;
+		email[strcspn(email, "\n")] = 0;
 
-		fprintf(stderr, "  %s  %s  %s\n", current, time_str, msg);
+		fprintf(stderr, "  %s  %s  %s  (%s %s)\n",
+			current, time_str, msg, name, email);
 		strcpy(current, parent);
 	}
 }
@@ -310,9 +352,9 @@ void add_recursive(const char *base, const char *relative, int *ignore_count, ch
 
 		char relpath[1024];
 		if (strlen(relative) == 0)
-			snprintf(relpath, sizeof(relpath), "%s%s", base, entry->d_name);
+			snprintf(relpath, sizeof(relpath), "%s/%s", base, entry->d_name);
 		else
-			snprintf(relpath, sizeof(relpath), "%s%s/%s", base, relative, entry->d_name);
+			snprintf(relpath, sizeof(relpath), "%s/%s/%s", base, relative, entry->d_name);
 
 		int ignore = 0;
 		for (int p = 0; p < *ignore_count; p++)
@@ -403,6 +445,53 @@ void AFHT_AddDir(size_t *i, int arg_c, char **arg_v)
 	fprintf(stderr, " [INFO] Added directory %s\n", dirpath);
 }
 
+void AFHT_IAm(size_t *i, int arg_c, char **arg_v)
+{
+	(*i) += 1;
+	if ((*i) >= (size_t)arg_c)
+	{
+		fprintf(stderr, " [ERROR] No Email or Username Given\n");
+		return;
+	}
+
+	const char *const Email = arg_v[*i];
+
+	(*i) += 1;
+	if ((*i) >= (size_t)arg_c)
+	{
+		fprintf(stderr, " [ERROR] No Username Given\n");
+		return;
+	}
+
+	const char *home = getenv("HOME");
+	if (!home)
+		home = getenv("USERPROFILE");
+	if (!home)
+	{
+		fprintf(stderr, " [ERROR] Could not find home directory\n");
+		return;
+	}
+
+	char config_dir[512];
+	snprintf(config_dir, sizeof(config_dir), "%s/.config/afht", home);
+	mkdir_p(config_dir);
+
+	char iam_path[512];
+	snprintf(iam_path, sizeof(iam_path), "%s/.config/afht/iam", home);
+	FILE *fp = fopen(iam_path, "wb");
+	if (!fp)
+	{
+		fprintf(stderr, " [ERROR] Could not create iam file\n");
+		return;
+	}
+
+	fprintf(fp, "email: %s\n", Email);
+	fprintf(fp, "name: %s\n", arg_v[*i]);
+	fclose(fp);
+
+	fprintf(stderr, " [INFO] Identity set: %s <%s>\n", arg_v[*i], Email);
+}
+
 struct
 {
 	const char *const cmd;
@@ -415,6 +504,7 @@ struct
     {.cmd = "/checkout", .use = AFHT_Checkout},
     {.cmd = "/log", .use = AFHT_Log},
     {.cmd = "/add.r", .use = AFHT_AddDir},
+    {.cmd = "/iam", .use = AFHT_IAm},
 };
 
 int main(int arg_c, char **arg_v)
