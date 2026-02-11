@@ -1,0 +1,31 @@
+Commands
+
+/init
+	Initialise repo
+	or in other words
+	create ".fh/" (fucking history)
+	and "./fh/HEAD"
+	and "./fh/commit"
+	and "./fh/versions"
+	(automatically creates a blank commit)
+
+/add
+	Add a file to COMMIT dir
+	(check equality of the file and old)
+
+/com
+	Commit changes by creating a folder with a hash (in versions),
+	and moving the data to a compressed format, (in a file in the folder) then
+	clearing the COMMIT dir.
+/fetch
+        fetch the contents of the most recent commit
+
+/checkout
+        switch head to a specific version
+
+/log
+        log all versions, their hashes, commit messages and timestamp
+
+/add.r
+        recursively add directory
+        e.g. /add.r src
