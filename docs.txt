@@ -18,7 +18,7 @@ Commands
 	and moving the data to a compressed format, (in a file in the folder) then
 	clearing the COMMIT dir.
 /fetch
-        fetch the contents of the most recent commit
+        fetch the contents of the commit in HEAD
 
 /checkout
         switch head to a specific version
