@@ -492,6 +492,97 @@ void AFHT_IAm(size_t *i, int arg_c, char **arg_v)
 	fprintf(stderr, " [INFO] Identity set: %s <%s>\n", arg_v[*i], Email);
 }
 
+void AFHT_Push(size_t *i, int arg_c, char **arg_v)
+{
+	(void)arg_c;
+	(void)arg_v;
+	(void)i;
+
+	char head[256] = {0};
+	FILE *fp = fopen(AFHT_HeadFile, "r");
+	if (fp)
+	{
+		fgets(head, sizeof(head), fp);
+		fclose(fp);
+		head[strcspn(head, "\n")] = 0;
+	}
+
+	if (strlen(head) == 0)
+	{
+		fprintf(stderr, " [ERROR] No HEAD to push\n");
+		return;
+	}
+
+	char stack_path[512];
+	snprintf(stack_path, sizeof(stack_path), "%s/HEAD.stack", AFHT_Directory);
+	FILE *stack = fopen(stack_path, "a");
+	if (!stack)
+	{
+		fprintf(stderr, " [ERROR] Could not open HEAD stack\n");
+		return;
+	}
+
+	fprintf(stack, "%s\n", head);
+	fclose(stack);
+	fprintf(stderr, " [INFO] Pushed HEAD: %s\n", head);
+}
+
+void AFHT_Pop(size_t *i, int arg_c, char **arg_v)
+{
+	(void)arg_c;
+	(void)arg_v;
+	(void)i;
+
+	char stack_path[512];
+	snprintf(stack_path, sizeof(stack_path), "%s/HEAD.stack", AFHT_Directory);
+
+	FILE *stack = fopen(stack_path, "r");
+	if (!stack)
+	{
+		fprintf(stderr, " [ERROR] Stack is empty\n");
+		return;
+	}
+
+	char lines[256][256] = {0};
+	int count = 0;
+
+	while (count < 256 && fgets(lines[count], sizeof(lines[0]), stack))
+	{
+		lines[count][strcspn(lines[count], "\n")] = 0;
+		count++;
+	}
+
+	fclose(stack);
+	if (count == 0)
+	{
+		fprintf(stderr, " [ERROR] Stack is empty\n");
+		return;
+	}
+
+	char *popped = lines[count - 1];
+	stack = fopen(stack_path, "w");
+	if (!stack)
+	{
+		fprintf(stderr, " [ERROR] Could not update stack\n");
+		return;
+	}
+
+	for (int i = 0; i < count - 1; i++)
+	{
+		fprintf(stack, "%s\n", lines[i]);
+	}
+	fclose(stack);
+
+	FILE *head = fopen(AFHT_HeadFile, "w");
+	if (head)
+	{
+		fprintf(head, "%s", popped);
+		fclose(head);
+	}
+
+	fprintf(stderr, " [INFO] Popped HEAD: %s\n", popped);
+}
+
 struct
 {
 	const char *const cmd;
@@ -505,6 +596,8 @@ struct
     {.cmd = "/log", .use = AFHT_Log},
     {.cmd = "/add.r", .use = AFHT_AddDir},
     {.cmd = "/iam", .use = AFHT_IAm},
+    {.cmd = "/push", .use = AFHT_Push},
+    {.cmd = "/pop", .use = AFHT_Pop},
 };
 
 int main(int arg_c, char **arg_v)
